@@ -1,6 +1,6 @@
-import os
 import json
 import sys
+from pathlib import Path
 from PyQt6.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -32,7 +32,7 @@ class UpdateWorker(QThread):
         self.auth_token = auth_token
         self.project_id = project_id
         self.file_id = file_id
-        self.translated_file_path = translated_file_path
+        self.translated_file_path = Path(translated_file_path)
         self.stage = stage
 
     def run(self):
@@ -42,8 +42,7 @@ class UpdateWorker(QThread):
 
             # 載入翻譯檔案
             try:
-                with open(self.translated_file_path, "r", encoding="utf-8") as f:
-                    string_translated_dict = json.load(f)
+                string_translated_dict = json.loads(self.translated_file_path.read_text(encoding="utf-8"))
             except Exception as e:
                 self.finished.emit(False, f"無法載入翻譯檔案: {str(e)}")
                 return
@@ -317,29 +316,20 @@ class BulkUpdateGUI(QMainWindow):
 
         self.worker = None
 
-    def get_app_directory(self):
-        """獲取應用程式目錄，使其在開發環境和編譯後皆可正常運作"""
-        if getattr(sys, "frozen", False):
-            # Running as compiled exe
-            return os.path.dirname(sys.executable)
-        else:
-            # Running in development
-            return os.path.dirname(os.path.abspath(__file__))
-
     def load_settings(self):
         """從 settings.json 檔案載入設定"""
         try:
-            settings_file = os.path.join(self.get_app_directory(), "settings.json")
-            if os.path.exists(settings_file):
-                with open(settings_file, "r", encoding="utf-8") as f:
-                    settings = json.load(f)
+            settings_dir = Path.home().joinpath("para_bulkupdate")
+            settings_file = settings_dir.joinpath("settings.json")
+            if settings_file.exists():
+                settings = json.loads(settings_file.read_text(encoding="utf-8"))
 
-                    if "auth_token" in settings:
-                        self.token_input.setText(settings["auth_token"])
-                    if "project_id" in settings:
-                        self.project_input.setText(str(settings["project_id"]))
+                if "auth_token" in settings:
+                    self.token_input.setText(settings["auth_token"])
+                if "project_id" in settings:
+                    self.project_input.setText(str(settings["project_id"]))
 
-                    self.append_log("已載入設定檔案")
+                self.append_log("已載入設定檔案")
         except Exception as e:
             self.append_log(f"載入設定檔案時出錯: {str(e)}")
 
@@ -351,15 +341,22 @@ class BulkUpdateGUI(QMainWindow):
         }
 
         try:
-            settings_file = os.path.join(self.get_app_directory(), "settings.json")
-            with open(settings_file, "w", encoding="utf-8") as f:
-                json.dump(settings, f, ensure_ascii=False, indent=4)
+            settings_dir = Path.home().joinpath("para_bulkupdate")
+            settings_file = settings_dir.joinpath("settings.json")
+            if not settings_dir.exists():
+                self.append_log("設定資料夾不存在，建立一個")
+                settings_dir.mkdir()
+                self.append_log(f"已成功建立設定資料夾於 {str(settings_dir)}")
+            settings_file.write_text(
+                json.dumps(settings, ensure_ascii=False, indent=4),
+                encoding="utf-8"
+            )
 
-            self.append_log("設定已儲存至 settings.json")
+            self.append_log(f"設定已儲存至 {str(settings_file)}")
             QMessageBox.information(
                 self,
                 "儲存成功",
-                "設定已成功儲存至 settings.json\n\n⚠️ 注意：此儲存包含你的 API Token，請妥善保管！",
+                f"設定已成功儲存至\n{str(settings_file)}\n\n⚠️ 注意：此儲存包含你的 API Token，請妥善保管！",
             )
 
         except Exception as e:
