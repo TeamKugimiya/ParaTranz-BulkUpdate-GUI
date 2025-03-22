@@ -8,4 +8,5 @@
 > 由於該檔案是自動生成的二進制執行檔，可能會被防毒軟體誤判為病毒。在任何平台上使用時請自行評估風險。
 
 <!-- Links -->
-claude-link: https://claude.ai/
+
+[claude-link]: https://claude.ai/

@@ -3,6 +3,10 @@ name: Build program
 on:
   push:
     branches: [ "main" ]
+    paths:
+      - para_bulkupdate.py
+      - pyproject.toml
+      - uv.lock
 
 jobs:
   build:
