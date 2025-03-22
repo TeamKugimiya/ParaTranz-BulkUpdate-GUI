@@ -317,12 +317,19 @@ class BulkUpdateGUI(QMainWindow):
 
         self.worker = None
 
+    def get_app_directory(self):
+        """獲取應用程式目錄，使其在開發環境和編譯後皆可正常運作"""
+        if getattr(sys, "frozen", False):
+            # Running as compiled exe
+            return os.path.dirname(sys.executable)
+        else:
+            # Running in development
+            return os.path.dirname(os.path.abspath(__file__))
+
     def load_settings(self):
         """從 settings.json 檔案載入設定"""
         try:
-            settings_file = os.path.join(
-                os.path.dirname(os.path.abspath(__file__)), "settings.json"
-            )
+            settings_file = os.path.join(self.get_app_directory(), "settings.json")
             if os.path.exists(settings_file):
                 with open(settings_file, "r", encoding="utf-8") as f:
                     settings = json.load(f)
@@ -344,14 +351,16 @@ class BulkUpdateGUI(QMainWindow):
         }
 
         try:
-            settings_file = os.path.join(
-                os.path.dirname(os.path.abspath(__file__)), "settings.json"
-            )
+            settings_file = os.path.join(self.get_app_directory(), "settings.json")
             with open(settings_file, "w", encoding="utf-8") as f:
                 json.dump(settings, f, ensure_ascii=False, indent=4)
 
             self.append_log("設定已儲存至 settings.json")
-            QMessageBox.information(self, "儲存成功", "設定已成功儲存至 settings.json\n\n⚠️ 注意：此儲存包含你的 API Token，請妥善保管！")
+            QMessageBox.information(
+                self,
+                "儲存成功",
+                "設定已成功儲存至 settings.json\n\n⚠️ 注意：此儲存包含你的 API Token，請妥善保管！",
+            )
 
         except Exception as e:
             self.append_log(f"儲存設定時出現錯誤: {str(e)}")
