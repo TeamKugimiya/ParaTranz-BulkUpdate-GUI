@@ -66,15 +66,6 @@ jobs:
           path: .
           merge-multiple: true
 
-      - name: VirusTotal Scan
-        uses: crazy-max/ghaction-virustotal@v4
-        with:
-          vt_api_key: ${{ secrets.VT_API_KEY }}
-          update_release_body: true
-          files: |
-            para_bulkupdate.exe
-            para_bulkupdate.bin
-
       - name: Add files to release
         uses: softprops/action-gh-release@v2
         with:
