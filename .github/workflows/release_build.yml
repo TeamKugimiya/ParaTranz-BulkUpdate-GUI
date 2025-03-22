@@ -1,0 +1,82 @@
+name: Release Build
+
+on:
+  push:
+    tags: [ "*" ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+   strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+   runs-on: ${{ matrix.os }}
+
+   steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version-file: ".python-version"
+
+    - name: Setup uv
+      uses: astral-sh/setup-uv@v5
+      with:
+        enable-cache: true
+
+    - name: Install Dependencies
+      run: |
+        uv sync
+        uv pip freeze > requirements.txt
+        cat requirements.txt
+        pip install -r requirements.txt
+        pip list
+
+    - name: Build Executable with Nuitka
+      uses: Nuitka/Nuitka-Action@main
+      with:
+         nuitka-version: main
+         script-name: para_bulkupdate.py
+         mode: onefile
+         disable-console: true
+         include-package: PyQt6
+         enable-plugins: pyqt6
+
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+         name: ${{ runner.os }} Build
+         path: |
+            build/*.exe
+            build/*.bin
+
+  publish:
+    runs-on: "ubuntu-latest"
+
+    steps:
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: .
+          merge-multiple: true
+
+      - name: VirusTotal Scan
+        uses: crazy-max/ghaction-virustotal@v4
+        with:
+          vt_api_key: ${{ secrets.VT_API_KEY }}
+          update_release_body: true
+          files: |
+            .exe$
+            .bin$
+
+      - name: Add files to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            *.exe
+            *.bin
