@@ -42,7 +42,9 @@ class UpdateWorker(QThread):
 
             # 載入翻譯檔案
             try:
-                string_translated_dict = json.loads(self.translated_file_path.read_text(encoding="utf-8"))
+                string_translated_dict = json.loads(
+                    self.translated_file_path.read_text(encoding="utf-8")
+                )
             except Exception as e:
                 self.finished.emit(False, f"無法載入翻譯檔案: {str(e)}")
                 return
@@ -348,8 +350,7 @@ class BulkUpdateGUI(QMainWindow):
                 settings_dir.mkdir()
                 self.append_log(f"已成功建立設定資料夾於 {str(settings_dir)}")
             settings_file.write_text(
-                json.dumps(settings, ensure_ascii=False, indent=4),
-                encoding="utf-8"
+                json.dumps(settings, ensure_ascii=False, indent=4), encoding="utf-8"
             )
 
             self.append_log(f"設定已儲存至 {str(settings_file)}")
