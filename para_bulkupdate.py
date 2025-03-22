@@ -40,12 +40,12 @@ class UpdateWorker(QThread):
             # 初始化 ParaTranz
             para = ParaTranz(api_token=self.auth_token)
 
-            # 加載翻譯檔案
+            # 載入翻譯檔案
             try:
                 with open(self.translated_file_path, "r", encoding="utf-8") as f:
                     string_translated_dict = json.load(f)
             except Exception as e:
-                self.finished.emit(False, f"無法加載翻譯檔案: {str(e)}")
+                self.finished.emit(False, f"無法載入翻譯檔案: {str(e)}")
                 return
 
             # 獲取詞條 ID 字典
@@ -94,22 +94,22 @@ class UpdateWorker(QThread):
         """
         return_data = {}
         try:
-            # 檢查是否能獲取檔案信息
+            # 檢查是否能獲取檔案訊息
             file_info = para.files.get_file(project_id=project_id, file_id=file_id)
 
             # 檢查回傳值是否為 None 或缺少必要字段
             if file_info is None:
-                self.update_log.emit("無法獲取檔案信息，API 返回為 None")
+                self.update_log.emit("無法獲取檔案訊息，API 返回為 None")
                 return None
 
             if "total" not in file_info:
-                self.update_log.emit(f"檔案信息格式不正確: {file_info}")
+                self.update_log.emit(f"檔案訊息格式不正確: {file_info}")
                 return None
 
             file_string_count = file_info["total"]
             stage_text = "未翻譯" if stage == 0 else "所有"
             self.update_log.emit(
-                f"檔案中共有 {file_string_count} 個詞條，將獲取{stage_text}詞條"
+                f"檔案中共有 {file_string_count} 個詞條，將獲取 {stage_text} 詞條"
             )
 
             # 使用檔案詞條數量計算分頁
@@ -182,7 +182,7 @@ class UpdateWorker(QThread):
                             f"更新詞條 {string_key} 失敗: API 返回為 None"
                         )
                         error_count += 1
-                    # 如果返回的是字典，可以檢查其中是否包含錯誤信息
+                    # 如果返回的是字典，可以檢查其中是否包含錯誤訊息
                     elif isinstance(response, dict) and "message" in response:
                         self.update_log.emit(
                             f"更新詞條 {string_key} 失敗: {response['message']}"
@@ -302,7 +302,7 @@ class BulkUpdateGUI(QMainWindow):
         logger.remove()  # 移除預設的日誌處理器
         logger.add(lambda msg: self.append_log(msg), level="INFO")
 
-        # 加載環境變數（如果有）
+        # 載入環境變數（如果有）
         if os.getenv("AUTH_TOKEN"):
             self.token_input.setText(os.getenv("AUTH_TOKEN"))
         if os.getenv("PROJECT_ID"):
@@ -373,23 +373,23 @@ class BulkUpdateGUI(QMainWindow):
             # 創建 ParaTranz 實例
             para = ParaTranz(api_token=self.token_input.text())
 
-            # 嘗試獲取專案信息
+            # 嘗試獲取專案訊息
             project_id = int(self.project_input.text())
             file_id = int(self.file_input.text())
 
-            # 測試獲取檔案信息
+            # 測試獲取檔案訊息
             file_info = para.files.get_file(project_id=project_id, file_id=file_id)
 
             if file_info is None:
-                self.append_log("無法獲取檔案信息，API 返回為 None")
+                self.append_log("無法獲取檔案訊息，API 返回為 None")
                 QMessageBox.critical(
                     self,
                     "連接測試失敗",
-                    "無法獲取檔案信息，請檢查 Token、專案 ID 和檔案 ID 是否正確",
+                    "無法獲取檔案訊息，請檢查 Token、專案 ID 和檔案 ID 是否正確",
                 )
                 return
             elif isinstance(file_info, dict) and "message" in file_info:
-                self.append_log(f"獲取檔案信息失敗: {file_info['message']}")
+                self.append_log(f"獲取檔案訊息失敗: {file_info['message']}")
                 QMessageBox.critical(
                     self, "連接測試失敗", f"API 返回錯誤: {file_info['message']}"
                 )
@@ -397,7 +397,7 @@ class BulkUpdateGUI(QMainWindow):
             elif isinstance(file_info, dict) and "total" in file_info:
                 self.append_log(f"連接成功！檔案中共有 {file_info['total']} 個詞條")
             else:
-                self.append_log(f"獲取檔案信息，但返回格式不正確: {file_info}")
+                self.append_log(f"獲取檔案訊息，但返回格式不正確: {file_info}")
                 QMessageBox.warning(
                     self, "連接測試結果異常", "連接到 API 成功，但返回格式不符合預期"
                 )
