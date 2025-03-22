@@ -216,7 +216,7 @@ class BulkUpdateGUI(QMainWindow):
         self.init_ui()
 
     def init_ui(self):
-        # 設置主視窗
+        # 設定主視窗
         self.setWindowTitle("ParaTranz 批量更新工具")
         self.setGeometry(100, 100, 700, 500)
 
@@ -226,7 +226,7 @@ class BulkUpdateGUI(QMainWindow):
         central_widget.setLayout(main_layout)
         self.setCentralWidget(central_widget)
 
-        # 創建表單佈局
+        # 建立表單佈局
         form_layout = QVBoxLayout()
 
         # AUTH TOKEN
@@ -265,7 +265,7 @@ class BulkUpdateGUI(QMainWindow):
         translate_file_layout.addWidget(self.translate_file_button)
         form_layout.addLayout(translate_file_layout)
 
-        # 添加更新模式選擇
+        # 新增更新模式選擇
         update_mode_group = QGroupBox("更新模式")
         update_mode_layout = QHBoxLayout()
 
@@ -278,41 +278,84 @@ class BulkUpdateGUI(QMainWindow):
         update_mode_group.setLayout(update_mode_layout)
         form_layout.addWidget(update_mode_group)
 
-        # 添加測試連接按鈕
-        self.test_button = QPushButton("測試連接")
-        self.test_button.clicked.connect(self.test_connection)
-        form_layout.addWidget(self.test_button)
+        # 新增按鈕佈局
+        buttons_layout = QHBoxLayout()
 
-        # 添加執行按鈕
+        # 新增測試連線按鈕
+        self.test_button = QPushButton("測試連線")
+        self.test_button.clicked.connect(self.test_connection)
+        buttons_layout.addWidget(self.test_button)
+
+        # 新增儲存設定按鈕
+        self.save_settings_button = QPushButton("儲存設定")
+        self.save_settings_button.clicked.connect(self.save_settings)
+        buttons_layout.addWidget(self.save_settings_button)
+
+        # 新增執行按鈕
         self.run_button = QPushButton("開始更新")
         self.run_button.clicked.connect(self.start_update)
-        form_layout.addWidget(self.run_button)
+        buttons_layout.addWidget(self.run_button)
 
-        # 添加日誌文本框
+        form_layout.addLayout(buttons_layout)
+
+        # 新增日誌文本框
         log_label = QLabel("執行日誌:")
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
 
-        # 將所有元素添加到主佈局
+        # 將所由元素增加到主佈局
         main_layout.addLayout(form_layout)
         main_layout.addWidget(log_label)
         main_layout.addWidget(self.log_text)
 
-        # 設置日誌
+        # 設定日誌
         logger.remove()  # 移除預設的日誌處理器
         logger.add(lambda msg: self.append_log(msg), level="INFO")
 
-        # 載入環境變數（如果有）
-        if os.getenv("AUTH_TOKEN"):
-            self.token_input.setText(os.getenv("AUTH_TOKEN"))
-        if os.getenv("PROJECT_ID"):
-            self.project_input.setText(os.getenv("PROJECT_ID"))
-        if os.getenv("FILE_ID"):
-            self.file_input.setText(os.getenv("FILE_ID"))
-        if os.getenv("TRANSLATED_FILE_PATH"):
-            self.translate_file_input.setText(os.getenv("TRANSLATED_FILE_PATH"))
+        # 載入設定檔案
+        self.load_settings()
 
         self.worker = None
+
+    def load_settings(self):
+        """從 settings.json 檔案載入設定"""
+        try:
+            settings_file = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), "settings.json"
+            )
+            if os.path.exists(settings_file):
+                with open(settings_file, "r", encoding="utf-8") as f:
+                    settings = json.load(f)
+
+                    if "auth_token" in settings:
+                        self.token_input.setText(settings["auth_token"])
+                    if "project_id" in settings:
+                        self.project_input.setText(str(settings["project_id"]))
+
+                    self.append_log("已載入設定檔案")
+        except Exception as e:
+            self.append_log(f"載入設定檔案時出錯: {str(e)}")
+
+    def save_settings(self):
+        """儲存設定至 settings.json"""
+        settings = {
+            "auth_token": self.token_input.text(),
+            "project_id": self.project_input.text(),
+        }
+
+        try:
+            settings_file = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), "settings.json"
+            )
+            with open(settings_file, "w", encoding="utf-8") as f:
+                json.dump(settings, f, ensure_ascii=False, indent=4)
+
+            self.append_log("設定已儲存至 settings.json")
+            QMessageBox.information(self, "儲存成功", "設定已成功儲存至 settings.json\n\n⚠️ 注意：此儲存包含你的 API Token，請妥善保管！")
+
+        except Exception as e:
+            self.append_log(f"儲存設定時出現錯誤: {str(e)}")
+            QMessageBox.critical(self, "儲存失敗", f"儲存設定時出錯: {str(e)}")
 
     def browse_file(self):
         file_path, _ = QFileDialog.getOpenFileName(
