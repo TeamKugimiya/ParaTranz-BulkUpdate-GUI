@@ -1,0 +1,19 @@
+[project]
+name = "ParaTranz-BulkUpdate-GUI"
+version = "1.0"
+description = "簡單的 GUI 上傳，由 AI 製作"
+readme = "README.md"
+requires-python = "==3.12.*"
+dependencies = [
+    "loguru>=0.7.3",
+    "paratranz-py",
+    "pyqt6>=6.8.1",
+]
+
+[tool.uv.sources]
+paratranz-py = { git = "https://github.com/TeamKugimiya/paratranz-py" }
+
+[dependency-groups]
+dev = [
+    "nuitka>=2.6.8",
+]
