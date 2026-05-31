@@ -11,8 +11,10 @@ def test_module_attributes():
         "UpdateWorker",
         "TestConnectionWorker",
         "FetchFilesWorker",
+        "ExtractWorker",
         "get_string_id_dict",
         "bulk_update_strings",
+        "extract_untranslated_strings",
         "_api_error",
         "_parse_files_list",
         "main",
@@ -109,3 +111,21 @@ def test_fetch_files_worker_instantiation():
 
     worker = FetchFilesWorker("token", 42)
     assert worker.project_id == 42
+
+
+def test_extract_worker_instantiation():
+    from para_bulkupdate import ExtractWorker
+
+    worker = ExtractWorker("token", 1, 2, "/tmp/out.json")
+    assert worker.project_id == 1
+    assert worker.file_id == 2
+    assert str(worker.output_path) == "/tmp/out.json"
+
+
+def test_gui_has_extract_btn(qapp):
+    from para_bulkupdate import BulkUpdateGUI
+
+    w = BulkUpdateGUI()
+    assert hasattr(w, "_extract_btn")
+    assert w._extract_btn.text() == "提取未翻譯"
+    w.close()

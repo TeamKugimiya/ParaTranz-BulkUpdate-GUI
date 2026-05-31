@@ -233,6 +233,7 @@ def get_string_id_dict(
                         "id": s["id"],
                         "translation": s.get("translation") or "",
                         "stage": s.get("stage", 0),
+                        "original": s.get("original") or "",
                     }
 
             if len(results) < page_size:
@@ -290,15 +291,12 @@ def bulk_update_strings(
         if current_stage in _REVIEWED_STAGES and value == current_translation:
             new_stage = current_stage
             log_fn(
-                f"跳過審核詞條（譯文未變動）- 鍵值: {key} "
-                f"(stage {current_stage})",
+                f"跳過審核詞條（譯文未變動）- 鍵值: {key} (stage {current_stage})",
                 "info",
             )
         else:
             new_stage = 1
-            log_fn(
-                f"更新詞條 - 鍵值: {key} ({string_id})\n譯文: {value}", "info"
-            )
+            log_fn(f"更新詞條 - 鍵值: {key} ({string_id})\n譯文: {value}", "info")
 
         try:
             response = para.strings.update_string(
@@ -321,6 +319,31 @@ def bulk_update_strings(
         progress_fn(total, total)
 
     return updated, skipped, errors
+
+
+def extract_untranslated_strings(
+    para: ParaTranz,
+    project_id: int,
+    file_id: int,
+    log_fn,
+    progress_fn=None,
+) -> dict | None:
+    """
+    Fetch untranslated (stage=0) strings and return {key: original_text}.
+
+    Returns None on failure.
+    """
+    strings = get_string_id_dict(
+        para,
+        project_id,
+        file_id,
+        stage=0,
+        log_fn=log_fn,
+        progress_fn=progress_fn,
+    )
+    if strings is None:
+        return None
+    return {key: entry["original"] for key, entry in strings.items()}
 
 
 # ---------------------------------------------------------------------------
@@ -502,6 +525,65 @@ class UpdateWorker(QThread):
             self.finished.emit(False, f"執行過程中發生錯誤: {str(e)}")
 
 
+class ExtractWorker(QThread):
+    update_log = pyqtSignal(str, str)  # message, level
+    progress = pyqtSignal(int, int)  # current, total
+    finished = pyqtSignal(bool, str)
+
+    def __init__(
+        self,
+        auth_token: str,
+        project_id: int,
+        file_id: int,
+        output_path: str,
+    ):
+        super().__init__()
+        self.auth_token = auth_token
+        self.project_id = project_id
+        self.file_id = file_id
+        self.output_path = Path(output_path)
+
+    def run(self):
+        try:
+            para = ParaTranz(api_token=self.auth_token)
+
+            def log_fn(msg: str, level: str = "info") -> None:
+                self.update_log.emit(msg, level)
+
+            def progress_fn(current: int, total: int) -> None:
+                self.progress.emit(current, total)
+
+            self.update_log.emit("正在提取未翻譯詞條...", "info")
+            result = extract_untranslated_strings(
+                para,
+                self.project_id,
+                self.file_id,
+                log_fn,
+                progress_fn,
+            )
+            if result is None:
+                self.finished.emit(
+                    False, "無法提取未翻譯詞條，請檢查專案 ID 和檔案 ID 是否正確"
+                )
+                return
+
+            try:
+                self.output_path.parent.mkdir(parents=True, exist_ok=True)
+                self.output_path.write_text(
+                    json.dumps(result, ensure_ascii=False, indent=4),
+                    encoding="utf-8",
+                )
+            except Exception as e:
+                self.finished.emit(False, f"無法寫入檔案: {str(e)}")
+                return
+
+            n = len(result)
+            self.finished.emit(True, f"已提取 {n} 個未翻譯詞條至 {self.output_path}")
+
+        except Exception as e:
+            self.finished.emit(False, f"執行過程中發生錯誤: {str(e)}")
+
+
 # ---------------------------------------------------------------------------
 # Main window
 # ---------------------------------------------------------------------------
@@ -513,6 +595,7 @@ class BulkUpdateGUI(QMainWindow):
         self._worker: UpdateWorker | None = None
         self._test_worker: TestConnectionWorker | None = None
         self._fetch_worker: FetchFilesWorker | None = None
+        self._extract_worker: ExtractWorker | None = None
         self._init_ui()
         self._load_settings()
 
@@ -631,6 +714,10 @@ class BulkUpdateGUI(QMainWindow):
         self._save_btn.clicked.connect(self._save_settings)
         row.addWidget(self._save_btn)
 
+        self._extract_btn = QPushButton("提取未翻譯")
+        self._extract_btn.clicked.connect(self._extract_untranslated)
+        row.addWidget(self._extract_btn)
+
         self._run_btn = QPushButton("開始更新")
         self._run_btn.setObjectName("primary")
         self._run_btn.setDefault(True)
@@ -741,6 +828,7 @@ class BulkUpdateGUI(QMainWindow):
             self._run_btn,
             self._save_btn,
             self._load_files_btn,
+            self._extract_btn,
         ):
             btn.setEnabled(not busy)
         self._progress.setVisible(busy)
@@ -889,6 +977,54 @@ class BulkUpdateGUI(QMainWindow):
             self.append_log(f"錯誤: {message}", "error")
             QMessageBox.critical(self, "錯誤", message)
 
+    def _extract_untranslated(self):
+        if not self._validate(check_file=False):
+            return
+
+        path, _ = QFileDialog.getSaveFileName(
+            self, "儲存提取的未翻譯詞條", "untranslated.json", "JSON 檔案 (*.json)"
+        )
+        if not path:
+            return
+
+        file_id_data = self._file_combo.currentData()
+        file_id = file_id_data if file_id_data is not None else int(self._get_file_id())
+
+        self._set_busy(True)
+        self._extract_btn.setText("提取中...")
+        self._log_text.clear()
+        self._set_status("正在提取未翻譯詞條...")
+        self.append_log("開始提取未翻譯詞條...", "info")
+
+        self._extract_worker = ExtractWorker(
+            self._token_input.text(),
+            int(self._project_input.text()),
+            file_id,
+            path,
+        )
+        self._extract_worker.update_log.connect(self.append_log)
+        self._extract_worker.progress.connect(self._update_progress)
+        self._extract_worker.finished.connect(self._extract_finished)
+        self._extract_worker.start()
+
+    def _extract_finished(self, success: bool, message: str):
+        self._set_busy(False)
+        self._extract_btn.setText("提取未翻譯")
+
+        if success:
+            self._set_status(f"完成：{message}")
+            self.append_log(message, "success")
+            output_path = (
+                self._extract_worker.output_path if self._extract_worker else None
+            )
+            if output_path:
+                self._trans_input.setText(str(output_path))
+            QMessageBox.information(self, "提取完成", message)
+        else:
+            self._set_status(f"失敗：{message}")
+            self.append_log(f"錯誤: {message}", "error")
+            QMessageBox.critical(self, "提取失敗", message)
+
     # ------------------------------------------------------------------
     # Settings persistence
     # ------------------------------------------------------------------
@@ -983,7 +1119,12 @@ class BulkUpdateGUI(QMainWindow):
             pass
 
     def closeEvent(self, event):
-        for worker in (self._worker, self._test_worker, self._fetch_worker):
+        for worker in (
+            self._worker,
+            self._test_worker,
+            self._fetch_worker,
+            self._extract_worker,
+        ):
             if worker and worker.isRunning():
                 worker.quit()
                 worker.wait(2000)

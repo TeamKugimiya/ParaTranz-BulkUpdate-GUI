@@ -10,6 +10,7 @@ from para_bulkupdate import (
     _api_error,
     _parse_files_list,
     bulk_update_strings,
+    extract_untranslated_strings,
     get_string_id_dict,
 )
 
@@ -89,24 +90,36 @@ def _noop_log(msg, level="info"):
     pass
 
 
-def _entry(id, translation="", stage=0):
+def _entry(id, translation="", stage=0, original=""):
     """Shorthand for the expected dict shape."""
-    return {"id": id, "translation": translation, "stage": stage}
+    return {"id": id, "translation": translation, "stage": stage, "original": original}
 
 
 def test_get_string_id_dict_basic():
     page1 = {
         "total": 2,
         "results": [
-            {"id": 10, "key": "greeting", "translation": "Hello", "stage": 1},
-            {"id": 11, "key": "farewell", "translation": "", "stage": 0},
+            {
+                "id": 10,
+                "key": "greeting",
+                "original": "Hi",
+                "translation": "Hello",
+                "stage": 1,
+            },
+            {
+                "id": 11,
+                "key": "farewell",
+                "original": "Bye",
+                "translation": "",
+                "stage": 0,
+            },
         ],
     }
     para = _make_para({"total": 2}, [page1])
     result = get_string_id_dict(para, 1, 1, None, _noop_log)
     assert result == {
-        "greeting": _entry(10, "Hello", 1),
-        "farewell": _entry(11, "", 0),
+        "greeting": _entry(10, "Hello", 1, "Hi"),
+        "farewell": _entry(11, "", 0, "Bye"),
     }
 
 
@@ -216,8 +229,7 @@ def test_get_string_id_dict_none_translation_normalised():
 def _ids(*entries):
     """Build a strings_id_key_dict from (key, id, translation, stage) tuples."""
     return {
-        key: {"id": sid, "translation": tr, "stage": st}
-        for key, sid, tr, st in entries
+        key: {"id": sid, "translation": tr, "stage": st} for key, sid, tr, st in entries
     }
 
 
@@ -349,3 +361,53 @@ def test_bulk_update_strings_empty_translated():
     assert skipped == 0
     assert errors == 0
     para.strings.update_string.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# extract_untranslated_strings
+# ---------------------------------------------------------------------------
+
+
+def test_extract_untranslated_strings_basic():
+    page1 = {
+        "total": 2,
+        "results": [
+            {
+                "id": 1,
+                "key": "mc.key.abc",
+                "original": "Translatable String",
+                "stage": 0,
+            },
+            {"id": 2, "key": "mc.key.def", "original": "Another text", "stage": 0},
+        ],
+    }
+    para = _make_para({"total": 2}, [page1])
+    result = extract_untranslated_strings(para, 1, 1, _noop_log)
+    assert result == {
+        "mc.key.abc": "Translatable String",
+        "mc.key.def": "Another text",
+    }
+
+
+def test_extract_untranslated_strings_empty():
+    page1 = {"total": 0, "results": []}
+    para = _make_para({"total": 0}, [page1])
+    result = extract_untranslated_strings(para, 1, 1, _noop_log)
+    assert result == {}
+
+
+def test_extract_untranslated_strings_returns_none_on_file_error():
+    para = _make_para({"message": "Not found"}, [])
+    result = extract_untranslated_strings(para, 1, 1, _noop_log)
+    assert result is None
+
+
+def test_extract_untranslated_strings_null_original():
+    """API returning null original should become empty string."""
+    page1 = {
+        "total": 1,
+        "results": [{"id": 1, "key": "k", "original": None, "stage": 0}],
+    }
+    para = _make_para({"total": 1}, [page1])
+    result = extract_untranslated_strings(para, 1, 1, _noop_log)
+    assert result == {"k": ""}
