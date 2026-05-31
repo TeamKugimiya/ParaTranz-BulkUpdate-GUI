@@ -22,10 +22,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4.2.2
 
-      - name: Set up Python 3.12
+      - name: Set up Python 3.14
         uses: actions/setup-python@v5.4.0
         with:
-          python-version: 3.12
+          python-version: "3.14"
 
       - name: Install Ruff
         uses: astral-sh/ruff-action@v3.2.1

@@ -1,0 +1,52 @@
+name: Tests
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - para_bulkupdate.py
+      - tests/**
+      - pyproject.toml
+      - uv.lock
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - para_bulkupdate.py
+      - tests/**
+      - pyproject.toml
+      - uv.lock
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: ".python-version"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --all-groups
+
+      - name: Install Qt platform dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
+            libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 \
+            libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 \
+            libxkbcommon-x11-0 libegl1
+
+      - name: Run unit tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: uv run pytest tests/ -v --tb=short

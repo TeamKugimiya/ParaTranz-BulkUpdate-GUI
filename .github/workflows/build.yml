@@ -48,6 +48,27 @@ jobs:
          include-package: PyQt6
          enable-plugins: pyqt6
 
+    - name: Smoke test binary (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        bin=$(ls build/*.bin 2>/dev/null | head -1)
+        test -n "$bin" || (echo "Binary not found" && exit 1)
+        test -f "$bin"  || (echo "Binary file missing" && exit 1)
+        chmod +x "$bin"
+        size=$(stat -c%s "$bin")
+        echo "Binary size: ${size} bytes"
+        test "$size" -gt 1000000 || (echo "Binary too small — build may have failed" && exit 1)
+
+    - name: Smoke test binary (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $exe = Get-ChildItem build\*.exe | Select-Object -First 1
+        if (-not $exe) { Write-Error "EXE not found"; exit 1 }
+        $size = $exe.Length
+        Write-Host "Binary size: $size bytes"
+        if ($size -lt 1000000) { Write-Error "EXE too small — build may have failed"; exit 1 }
+
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
       with:
