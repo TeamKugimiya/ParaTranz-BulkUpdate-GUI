@@ -190,7 +190,11 @@ def test_get_string_id_dict_untranslated_uses_page_total():
 
 
 def test_get_string_id_dict_progress_reported():
-    page1 = {"pageCount": 1, "rowCount": 1, "results": [{"id": 1, "key": "x", "stage": 1}]}
+    page1 = {
+        "pageCount": 1,
+        "rowCount": 1,
+        "results": [{"id": 1, "key": "x", "stage": 1}],
+    }
     para = _make_para({"total": 1}, [page1])
     calls = []
     get_string_id_dict(
