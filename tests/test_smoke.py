@@ -26,7 +26,7 @@ def test_gui_window_title(qapp):
     from para_bulkupdate import BulkUpdateGUI
 
     w = BulkUpdateGUI()
-    assert w.windowTitle() == "ParaTranz 批量更新工具"
+    assert w.windowTitle() == "ParaTranz 批次更新工具"
     w.close()
 
 

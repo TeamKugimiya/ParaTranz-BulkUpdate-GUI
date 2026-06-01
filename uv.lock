@@ -140,8 +140,8 @@ dev = [
 
 [[package]]
 name = "paratranz-py"
-version = "0.7.3"
-source = { git = "https://github.com/TeamKugimiya/paratranz-py#9d0dfd077c15df72a6df9ab799840a9583bef393" }
+version = "0.8.0"
+source = { git = "https://github.com/TeamKugimiya/paratranz-py#202d38f6239305e32966293fcd8625fea53e8e58" }
 dependencies = [
     { name = "idna" },
     { name = "loguru" },

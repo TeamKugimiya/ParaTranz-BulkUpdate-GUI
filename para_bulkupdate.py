@@ -137,7 +137,7 @@ QStatusBar {
 def _api_error(resp) -> str | None:
     """Return an error string if resp signals a failure, else None."""
     if resp is None:
-        return "API 返回為 None"
+        return "API 回傳為 None"
     if isinstance(resp, dict) and "message" in resp:
         return resp["message"]
     return None
@@ -175,35 +175,32 @@ def get_string_id_dict(
 
     Stores the current translation and stage so bulk_update_strings can decide
     whether to preserve the review status when the text is unchanged.
-    Uses the first-page `total` to drive pagination, so untranslated-only
-    mode no longer over-counts pages.
+    Uses the first-page `pageCount` from the strings API response to drive
+    pagination; `pageCount`/`rowCount` are the real field names returned by
+    the ParaTranz paginated wrapper (not `total`).
     """
     return_data: dict = {}
     try:
         file_info = para.files.get_file(project_id=project_id, file_id=file_id)
         err = _api_error(file_info)
         if err:
-            log_fn(f"無法獲取檔案訊息: {err}", "error")
+            log_fn(f"無法取得檔案資訊: {err}", "error")
             return None
         if "total" not in file_info:
-            log_fn(f"檔案訊息格式不正確: {file_info}", "error")
+            log_fn(f"檔案資訊格式不正確: {file_info}", "error")
             return None
 
         stage_text = "未翻譯" if stage == 0 else "所有"
         log_fn(
-            f"檔案共有 {file_info['total']} 個詞條，將獲取{stage_text}詞條",
+            f"檔案共有 {file_info['total']} 個詞條，開始處理{stage_text}詞條",
             "info",
         )
 
         page_size = 300
         page = 1
-        total_pages = 1
+        total_pages = None
 
         while True:
-            log_fn(f"正在處理第 {page}/{total_pages} 頁...", "info")
-            if progress_fn:
-                progress_fn(page - 1, total_pages)
-
             data = para.strings.get_strings(
                 project_id=project_id,
                 file_id=file_id,
@@ -213,15 +210,18 @@ def get_string_id_dict(
             )
             err = _api_error(data)
             if err:
-                log_fn(f"無法獲取第 {page} 頁詞條: {err}", "warning")
+                log_fn(f"無法取得第 {page} 頁詞條: {err}", "warning")
                 break
             if "results" not in data:
                 log_fn(f"第 {page} 頁詞條格式不正確: {data}", "warning")
                 break
 
-            if page == 1 and "total" in data:
-                total_items = data["total"]
-                total_pages = max(1, (total_items + page_size - 1) // page_size)
+            if total_pages is None:
+                total_pages = data.get("pageCount") or 1
+
+            log_fn(f"正在處理第 {page}/{total_pages} 頁...", "info")
+            if progress_fn:
+                progress_fn(page - 1, total_pages)
 
             results = data["results"]
             if not results:
@@ -240,12 +240,13 @@ def get_string_id_dict(
                 break
             page += 1
 
+        final = total_pages or 1
         if progress_fn:
-            progress_fn(total_pages, total_pages)
+            progress_fn(final, final)
 
         return return_data
     except Exception as e:
-        log_fn(f"獲取詞條時出錯: {str(e)}", "error")
+        log_fn(f"取得詞條時發生錯誤: {str(e)}", "error")
         return None
 
 
@@ -312,7 +313,7 @@ def bulk_update_strings(
             else:
                 updated += 1
         except Exception as e:
-            log_fn(f"更新詞條 {key} 時出錯: {str(e)}", "error")
+            log_fn(f"更新詞條 {key} 時發生錯誤: {str(e)}", "error")
             errors += 1
 
     if progress_fn:
@@ -397,14 +398,14 @@ class TestConnectionWorker(QThread):
             )
             err = _api_error(file_info)
             if err:
-                self.finished.emit(False, f"無法獲取檔案訊息: {err}", [])
+                self.finished.emit(False, f"無法取得檔案資訊: {err}", [])
                 return
             if "total" not in file_info:
-                self.finished.emit(False, f"返回格式不正確: {file_info}", [])
+                self.finished.emit(False, f"回傳格式不正確: {file_info}", [])
                 return
 
             self.log.emit(
-                f"連接成功！檔案中共有 {file_info['total']} 個詞條", "success"
+                f"連線成功！檔案中共有 {file_info['total']} 個詞條", "success"
             )
 
             files: list[dict] = []
@@ -415,7 +416,7 @@ class TestConnectionWorker(QThread):
                 pass
 
             stage_text = "未翻譯" if self.stage == 0 else "所有"
-            self.log.emit(f"正在測試獲取{stage_text}詞條...", "info")
+            self.log.emit(f"正在測試取得{stage_text}詞條...", "info")
             data = para.strings.get_strings(
                 project_id=self.project_id,
                 file_id=self.file_id,
@@ -425,22 +426,22 @@ class TestConnectionWorker(QThread):
             )
             err = _api_error(data)
             if err:
-                self.finished.emit(False, f"獲取詞條失敗: {err}", files)
+                self.finished.emit(False, f"取得詞條失敗: {err}", files)
                 return
 
             results = data.get("results", [])
             mode_text = "未翻譯詞條" if self.stage == 0 else "所有詞條"
             if self.stage == 0 and not results:
                 self.log.emit("注意：未找到未翻譯詞條，可能所有詞條都已翻譯", "warning")
-                self.finished.emit(True, "連接成功，但未找到未翻譯的詞條", files)
+                self.finished.emit(True, "連線成功，但未找到未翻譯的詞條", files)
             else:
                 self.log.emit(
-                    f"成功獲取{mode_text}，第一頁 {len(results)} 個", "success"
+                    f"成功取得{mode_text}，第一頁 {len(results)} 個", "success"
                 )
-                self.finished.emit(True, f"成功連接並獲取{mode_text}！", files)
+                self.finished.emit(True, f"成功連線並取得{mode_text}！", files)
 
         except Exception as e:
-            self.finished.emit(False, f"連接時發生錯誤: {str(e)}", [])
+            self.finished.emit(False, f"連線時發生錯誤: {str(e)}", [])
 
 
 class UpdateWorker(QThread):
@@ -476,7 +477,7 @@ class UpdateWorker(QThread):
                 return
 
             stage_desc = "未翻譯的" if self.stage == 0 else "所有"
-            self.update_log.emit(f"正在獲取{stage_desc}詞條 ID 字典...", "info")
+            self.update_log.emit(f"正在取得{stage_desc}詞條 ID 字典...", "info")
 
             def log_fn(msg: str, level: str = "info") -> None:
                 self.update_log.emit(msg, level)
@@ -495,12 +496,12 @@ class UpdateWorker(QThread):
             if not strings_id_key_dict:
                 self.finished.emit(
                     False,
-                    "無法獲取詞條 ID 字典，請檢查專案 ID 和檔案 ID 是否正確",
+                    "無法取得詞條 ID 字典，請檢查專案 ID 和檔案 ID 是否正確",
                 )
                 return
 
             self.update_log.emit(f"找到 {len(strings_id_key_dict)} 個詞條", "info")
-            self.update_log.emit("開始批量更新詞條...", "info")
+            self.update_log.emit("開始批次更新詞條...", "info")
 
             updated, skipped, errors = bulk_update_strings(
                 para,
@@ -604,7 +605,7 @@ class BulkUpdateGUI(QMainWindow):
     # ------------------------------------------------------------------
 
     def _init_ui(self):
-        self.setWindowTitle("ParaTranz 批量更新工具")
+        self.setWindowTitle("ParaTranz 批次更新工具")
         self.setMinimumSize(760, 560)
 
         central = QWidget()
@@ -669,7 +670,7 @@ class BulkUpdateGUI(QMainWindow):
         self._file_combo = QComboBox()
         self._file_combo.setEditable(True)
         self._file_combo.lineEdit().setPlaceholderText(
-            "輸入 ID 或關鍵字搜尋，或點擊「載入清單」"
+            "輸入 ID 或關鍵字搜尋，或點選「載入清單」"
         )
         # Allow substring search so the user can type any part of the filename
         completer = self._file_combo.completer()
@@ -740,7 +741,7 @@ class BulkUpdateGUI(QMainWindow):
         copy_btn.clicked.connect(self._copy_log)
         row.addWidget(copy_btn)
 
-        save_btn = QPushButton("另存…")
+        save_btn = QPushButton("另存...")
         save_btn.clicked.connect(self._save_log)
         row.addWidget(save_btn)
 
@@ -895,7 +896,7 @@ class BulkUpdateGUI(QMainWindow):
         self._test_btn.setText("測試中...")
         self._log_text.clear()
         self._set_status("正在測試連線...")
-        self.append_log(f"正在測試 ParaTranz API 連接 (模式: {mode_text})...", "info")
+        self.append_log(f"正在測試 ParaTranz API 連線 (模式: {mode_text})...", "info")
 
         self._test_worker = TestConnectionWorker(
             self._token_input.text(),
@@ -916,10 +917,10 @@ class BulkUpdateGUI(QMainWindow):
 
         if success:
             self._set_status(f"連線測試成功：{message}")
-            QMessageBox.information(self, "連接測試成功", message)
+            QMessageBox.information(self, "連線測試成功", message)
         else:
             self._set_status(f"連線測試失敗：{message}")
-            QMessageBox.critical(self, "連接測試失敗", message)
+            QMessageBox.critical(self, "連線測試失敗", message)
 
     def _start_update(self):
         if not self._validate():
@@ -943,8 +944,8 @@ class BulkUpdateGUI(QMainWindow):
         self._set_busy(True)
         self._run_btn.setText("更新中...")
         self._log_text.clear()
-        self._set_status(f"正在批量更新{mode_text}...")
-        self.append_log(f"開始批量更新{mode_text}...", "info")
+        self._set_status(f"正在批次更新{mode_text}...")
+        self.append_log(f"開始批次更新{mode_text}...", "info")
 
         self._worker = UpdateWorker(
             self._token_input.text(),
@@ -1056,7 +1057,7 @@ class BulkUpdateGUI(QMainWindow):
 
             self.append_log("已載入設定檔案", "info")
         except Exception as e:
-            self.append_log(f"載入設定檔案時出錯: {str(e)}", "error")
+            self.append_log(f"載入設定檔案時發生錯誤: {str(e)}", "error")
 
     def _save_settings(self):
         geo = self.geometry()
@@ -1092,8 +1093,8 @@ class BulkUpdateGUI(QMainWindow):
                 "\n\n⚠️ 注意：此儲存包含你的 API Token，請妥善保管！",
             )
         except Exception as e:
-            self.append_log(f"儲存設定時出現錯誤: {str(e)}", "error")
-            QMessageBox.critical(self, "儲存失敗", f"儲存設定時出錯: {str(e)}")
+            self.append_log(f"儲存設定時發生錯誤: {str(e)}", "error")
+            QMessageBox.critical(self, "儲存失敗", f"儲存設定時發生錯誤: {str(e)}")
 
     def _save_window_geometry(self):
         try:

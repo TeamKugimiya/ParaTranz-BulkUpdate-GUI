@@ -21,7 +21,7 @@ from para_bulkupdate import (
 
 
 def test_api_error_none():
-    assert _api_error(None) == "API 返回為 None"
+    assert _api_error(None) == "API 回傳為 None"
 
 
 def test_api_error_dict_with_message():
@@ -97,7 +97,8 @@ def _entry(id, translation="", stage=0, original=""):
 
 def test_get_string_id_dict_basic():
     page1 = {
-        "total": 2,
+        "pageCount": 1,
+        "rowCount": 2,
         "results": [
             {
                 "id": 10,
@@ -145,18 +146,21 @@ def test_get_string_id_dict_pagination():
     """Two full pages followed by a partial page terminates correctly."""
     page_size = 300
     page1 = {
-        "total": 650,
+        "pageCount": 3,
+        "rowCount": 650,
         "results": [{"id": i, "key": f"k{i}", "stage": 0} for i in range(page_size)],
     }
     page2 = {
-        "total": 650,
+        "pageCount": 3,
+        "rowCount": 650,
         "results": [
             {"id": i, "key": f"k{i}", "stage": 0}
             for i in range(page_size, page_size * 2)
         ],
     }
     page3 = {
-        "total": 650,
+        "pageCount": 3,
+        "rowCount": 650,
         "results": [
             {"id": i, "key": f"k{i}", "stage": 0}
             for i in range(page_size * 2, page_size * 2 + 50)
@@ -169,11 +173,11 @@ def test_get_string_id_dict_pagination():
 
 
 def test_get_string_id_dict_untranslated_uses_page_total():
-    """In untranslated mode the page-level total (not file total) drives paging."""
+    """In untranslated mode the page-level pageCount (not file total) drives paging."""
     file_total = 1000  # file has 1000 strings total
-    untranslated_total = 2  # but only 2 are untranslated
     page1 = {
-        "total": untranslated_total,
+        "pageCount": 1,  # only 1 page of untranslated strings
+        "rowCount": 2,
         "results": [
             {"id": 1, "key": "a", "stage": 0},
             {"id": 2, "key": "b", "stage": 0},
@@ -186,7 +190,7 @@ def test_get_string_id_dict_untranslated_uses_page_total():
 
 
 def test_get_string_id_dict_progress_reported():
-    page1 = {"total": 1, "results": [{"id": 1, "key": "x", "stage": 1}]}
+    page1 = {"pageCount": 1, "rowCount": 1, "results": [{"id": 1, "key": "x", "stage": 1}]}
     para = _make_para({"total": 1}, [page1])
     calls = []
     get_string_id_dict(
@@ -197,7 +201,8 @@ def test_get_string_id_dict_progress_reported():
 
 def test_get_string_id_dict_skips_bad_entries():
     page1 = {
-        "total": 3,
+        "pageCount": 1,
+        "rowCount": 3,
         "results": [
             {"id": 1, "key": "good", "stage": 1},
             {"id": 2},  # missing key
@@ -213,7 +218,8 @@ def test_get_string_id_dict_skips_bad_entries():
 def test_get_string_id_dict_none_translation_normalised():
     """API may return null for untranslated strings; should become empty string."""
     page1 = {
-        "total": 1,
+        "pageCount": 1,
+        "rowCount": 1,
         "results": [{"id": 1, "key": "k", "translation": None, "stage": 0}],
     }
     para = _make_para({"total": 1}, [page1])
@@ -370,7 +376,8 @@ def test_bulk_update_strings_empty_translated():
 
 def test_extract_untranslated_strings_basic():
     page1 = {
-        "total": 2,
+        "pageCount": 1,
+        "rowCount": 2,
         "results": [
             {
                 "id": 1,
@@ -390,7 +397,7 @@ def test_extract_untranslated_strings_basic():
 
 
 def test_extract_untranslated_strings_empty():
-    page1 = {"total": 0, "results": []}
+    page1 = {"pageCount": 0, "rowCount": 0, "results": []}
     para = _make_para({"total": 0}, [page1])
     result = extract_untranslated_strings(para, 1, 1, _noop_log)
     assert result == {}
@@ -405,9 +412,39 @@ def test_extract_untranslated_strings_returns_none_on_file_error():
 def test_extract_untranslated_strings_null_original():
     """API returning null original should become empty string."""
     page1 = {
-        "total": 1,
+        "pageCount": 1,
+        "rowCount": 1,
         "results": [{"id": 1, "key": "k", "original": None, "stage": 0}],
     }
     para = _make_para({"total": 1}, [page1])
     result = extract_untranslated_strings(para, 1, 1, _noop_log)
     assert result == {"k": ""}
+
+
+# ---------------------------------------------------------------------------
+# Pagination log display regression
+# ---------------------------------------------------------------------------
+
+
+def test_get_string_id_dict_page_log_shows_correct_total():
+    """Page log must show the correct total from the start (regression: was always /1)."""
+    page_size = 300
+    page1 = {
+        "pageCount": 2,
+        "rowCount": 547,
+        "results": [{"id": i, "key": f"k{i}", "stage": 0} for i in range(page_size)],
+    }
+    page2 = {
+        "pageCount": 2,
+        "rowCount": 547,
+        "results": [
+            {"id": i, "key": f"k{i}", "stage": 0}
+            for i in range(page_size, page_size + 247)
+        ],
+    }
+    para = _make_para({"total": 547}, [page1, page2])
+    messages: list[str] = []
+    get_string_id_dict(para, 1, 1, None, lambda msg, level="info": messages.append(msg))
+    page_logs = [m for m in messages if m.startswith("正在處理第")]
+    assert "正在處理第 1/2 頁..." in page_logs
+    assert "正在處理第 2/2 頁..." in page_logs
